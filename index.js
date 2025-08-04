@@ -3,27 +3,22 @@ const https = require("https");
 const v4Agemt = new https.Agent({
     family: 4,
 });
-const v6Agemt = new https.Agent({
-    family: 6,
-});
 
 const INTERVAL_SECONDS = process.env.INTERVAL_SECONDS || 600;
 
 const CLOUDFLARE_CDN_CGI_TRACE_URL = "https://cloudflare.com/cdn-cgi/trace";
 const CLOUDFLARE_API_URL = "https://api.cloudflare.com/client/v4";
 const IPIFY_V4_API_URL = "https://api.ipify.org?format=json";
-const IPIFY_V6_API_URL = "https://api64.ipify.org?format=json";
 
 let IN_PROGRESS = false;
 let currentIPv4 = "";
-let currentIPv6 = "";
 const RECORDS_IP = {};
 let counter = 1;
 
-async function getPublicIp(v = 4) {
+async function getPublicIp() {
     try {
         const response = await axios.get(CLOUDFLARE_CDN_CGI_TRACE_URL, {
-            httpsAgent: v == 4 ? v4Agemt : v6Agemt,
+            httpsAgent: v4Agemt,
             timeout: 3000,
         });
         const ip = response.data.match(/ip=(.*)/)[1];
@@ -31,8 +26,7 @@ async function getPublicIp(v = 4) {
     } catch (error) {
         console.error("Failed to get public IP from cloudflare.com", error);
         try {
-            const url = v == 4 ? IPIFY_V4_API_URL : IPIFY_V6_API_URL;
-            const response = await axios.get(url, { timeout: 3000 });
+            const response = await axios.get(IPIFY_V4_API_URL, { timeout: 3000 });
             const ip = response.data.ip;
             return ip;
         } catch (error) {
@@ -108,7 +102,12 @@ async function startUpdate() {
     const results = [];
     for (let i = 0; i < records.length; i++) {
         const { name, proxied, type, zoneId } = records[i];
-        const ip = await getPublicIp(type == "AAAA" ? 6 : 4);
+        if (type !== "A") {
+            console.log(`Skipping record ${name} of unsupported type ${type}. Only A records are handled.`);
+            results.push(false);
+            continue;
+        }
+        const ip = await getPublicIp();
         if (!ip) {
             console.error("Failed to get public IP");
             results.push(false);
@@ -121,7 +120,7 @@ async function startUpdate() {
             results.push(false);
             continue;
         }
-        
+
         RECORDS_IP[`${name}-${type}`] = recordData.content;
         if (recordData.content == ip) {
             results.push(true);
@@ -164,19 +163,18 @@ const interval = setInterval(async () => {
         return;
     }
     counter++;
-    const ipv6 = await getPublicIp(6);
-    const ipv4 = await getPublicIp(4);
+    const ipv4 = await getPublicIp();
 
     let chaned = false;
 
     for (const key in RECORDS_IP) {
-        if (RECORDS_IP[key] != ipv4 && RECORDS_IP[key] != ipv6) {
+        if (RECORDS_IP[key] != ipv4) {
             chaned = true;
             break;
         }
     }
 
-    if (ipv6 != currentIPv6 || ipv4 != currentIPv4 || chaned) {
+    if (ipv4 != currentIPv4 || chaned) {
         if (IN_PROGRESS) {
             return;
         }
@@ -186,7 +184,6 @@ const interval = setInterval(async () => {
             console.error("Failed to update all records");
         } else {
             currentIPv4 = ipv4;
-            currentIPv6 = ipv6;
         }
     }
 }, INTERVAL_SECONDS * 1000);
