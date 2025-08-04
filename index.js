@@ -7,6 +7,8 @@ const v6Agemt = new https.Agent({
     family: 6,
 });
 
+const INTERVAL_SECONDS = process.env.INTERVAL_SECONDS || 600;
+
 const CLOUDFLARE_CDN_CGI_TRACE_URL = "https://cloudflare.com/cdn-cgi/trace";
 const CLOUDFLARE_API_URL = "https://api.cloudflare.com/client/v4";
 const IPIFY_V4_API_URL = "https://api.ipify.org?format=json";
@@ -187,7 +189,7 @@ const interval = setInterval(async () => {
             currentIPv6 = ipv6;
         }
     }
-}, 15 * 1000);
+}, INTERVAL_SECONDS * 1000);
 
 console.log("Service started");
 
